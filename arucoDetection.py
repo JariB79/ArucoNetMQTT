@@ -26,15 +26,15 @@ def estimate_pose(corners, marker_size, camera_matrix, dist_coeffs):
 
 
 # Marker-Größe in Metern
-marker_size = 0.0
+marker_size = 0.025
 
 # Replace with the updated IP address of your ESP32
 ip_address = '192.168.0.156'
 url = f'http://{ip_address}:81/stream'
 
 # Variablen für Kamerakalibrierung (initialisiert mit Platzhaltern)
-c, Lx, Ly = -0.00152, 0.0000022, 0.0000022
-fx, fy, cx, cy = c/Lx, -c/Ly, 803.66, 601.33  # Brennweiten & optischer Mittelpunkt (Anpassen nach Kalibrierung)
+c, Lx, Ly = -0.0036, 0.0000022, 0.0000022
+fx, fy, cx, cy = c/Lx, -c/Ly, 800, 600  # Brennweiten & optischer Mittelpunkt (Anpassen nach Kalibrierung)
 k1, k2, p1, p2, k3 = 0.1, -0.05, 0, 0, 0  # Verzerrungswerte (Ersetzen nach Kalibrierung)
 
 # Kameramatrix und Verzerrungskoeffizienten mit Variablen
