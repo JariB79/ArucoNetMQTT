@@ -1,6 +1,8 @@
 import cv2
 import cv2.aruco as aruco
 import numpy as np
+import requests
+
 
 
 # 3D-Koordinaten der Marker-Eckpunkte (bei flachem Marker auf der XY-Ebene)
@@ -28,14 +30,26 @@ def estimate_pose(corners, marker_size, camera_matrix, dist_coeffs):
 # Marker-Größe in Metern
 marker_size = 0.025
 
-# Replace with the updated IP address of your ESP32
-ip_address = '192.168.0.156'
-url = f'http://{ip_address}:81/stream'
+# ESP32-CAM IP-Adresse
+ip_address = "192.168.0.156"
+
+# URL für das Setzen der Auflösung auf UXGA (1600x1200)
+resolution_url = (f"http://{ip_address}/control?var=framesize&val=10")
+
+# Anfrage senden, um die Auflösung zu ändern
+response = requests.get(resolution_url)
+
+if response.status_code == 200:
+    print("✅ Auflösung erfolgreich auf UXGA (1600x1200) gesetzt!")
+else:
+    print("⚠ Fehler beim Setzen der Auflösung:", response.status_code)
+
+url = f'http://{ip_address}:81/stream?res=UXGA'
 
 # Variablen für Kamerakalibrierung (initialisiert mit Platzhaltern)
-c, Lx, Ly = -0.0036, 0.0000022, 0.0000022
-fx, fy, cx, cy = c/Lx, -c/Ly, 800, 600  # Brennweiten & optischer Mittelpunkt (Anpassen nach Kalibrierung)
-k1, k2, p1, p2, k3 = 0.1, -0.05, 0, 0, 0  # Verzerrungswerte (Ersetzen nach Kalibrierung)
+c, Lx, Ly = -0.00152, 0.0000022, 0.0000022
+fx, fy, cx, cy = 299.6479, 307.0981, 161.4847, 126.4022    # Brennweiten & optischer Mittelpunkt (Anpassen nach Kalibrierung)
+k1, k2, p1, p2, k3 = -0.0657, 0.4584, 0, 0, 0    # Verzerrungswerte (Ersetzen nach Kalibrierung)
 
 # Kameramatrix und Verzerrungskoeffizienten mit Variablen
 camera_matrix = np.array([[fx, 0, cx],
@@ -84,7 +98,20 @@ def main():
                 else:
                     print(f"⚠ Warnung: Pose-Schätzung für Marker {ids[i][0]} fehlgeschlagen!")
 
-                print(f"Marker {ids[i][0]} - Abstand: {tvecs.flatten() if tvecs is not None else 'N/A'}, Orientierung: {rvecs.flatten() if rvecs is not None else 'N/A'}")
+                #print(f"Marker {ids[i][0]} - Abstand: {tvecs.flatten() if tvecs is not None else 'N/A'}, Orientierung: {rvecs.flatten() if rvecs is not None else 'N/A'}")
+
+                # Berechnung der Polarkoordinaten (Höhe wird ignoriert)
+                x, y = tvecs.flatten()[2], tvecs.flatten()[0]
+                r = np.sqrt(x ** 2 + y ** 2)  # Betrag des Vektors
+                theta = np.arctan2(y, x) * (180 / np.pi)  # Winkel in Grad
+
+                # Yaw-Winkel extrahieren (nur Z-Rotation)
+                yaw = rvecs.flatten()[2] * (180 / np.pi)  # Umrechnung von Rad in Grad
+
+                print(f"Marker {ids[i][0]} - Abstand (Polarkoordinaten): r = {r:.3f} m, θ = {theta:.2f}°")
+                print(f"Yaw-Winkel: {yaw:.2f}°")
+
+
 
         cv2.imshow('ESP32 ArUco Detection', frame)
 
