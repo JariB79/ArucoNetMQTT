@@ -2,6 +2,7 @@ import cv2
 import cv2.aruco as aruco
 import numpy as np
 import requests
+import paho.mqtt.client as mqtt
 
 
 # 3D-Koordinaten der Marker-Eckpunkte (bei flachem Marker auf der XY-Ebene)
@@ -26,6 +27,24 @@ def estimate_pose(corners, marker_size, camera_matrix, dist_coeffs):
         return None, None
 
 
+# MQTT Einstellungen
+MQTT_BROKER = "192.168.0.252"
+MQTT_PORT = 1883
+MQTT_TOPIC_PUBLISH = "$SYS/aruco/detection"
+MQTT_TOPIC_SUBSCRIBE = "aruco/config"
+
+# Callback-Funktion für empfangene MQTT-Nachrichten
+def on_message(client, userdata, msg):
+    print(f"Empfangene Nachricht: {msg.topic}: {msg.payload.decode()}")
+
+# Initialisiere MQTT-Client
+client = mqtt.Client()
+client.on_message = on_message
+client.connect(MQTT_BROKER, MQTT_PORT, 60)
+client.subscribe(MQTT_TOPIC_SUBSCRIBE)
+client.loop_start()
+
+
 # Marker-Größe in Metern
 marker_size = 0.025
 
@@ -39,22 +58,17 @@ resolution_url = (f"http://{ip_address}/control?var=framesize&val=10")
 response = requests.get(resolution_url)
 
 if response.status_code == 200:
-    print(" Auflösung erfolgreich auf UXGA (1600x1200) gesetzt!")
+    print("Auflösung erfolgreich auf UXGA (1600x1200) gesetzt!")
 else:
-    print(" Fehler beim Setzen der Auflösung:", response.status_code)
+    print("Fehler beim Setzen der Auflösung:", response.status_code)
 
 url = f'http://{ip_address}:81/stream?res=UXGA'
 
-# Variablen für Kamerakalibrierung (initialisiert mit Platzhaltern)
-c, Lx, Ly = -0.00152, 0.0000022, 0.0000022
-fx, fy, cx, cy = 299.6479, 307.0981, 161.4847, 126.4022    # Brennweiten & optischer Mittelpunkt (Anpassen nach Kalibrierung)
-k1, k2, p1, p2, k3 = -0.0657, 0.4584, 0, 0, 0    # Verzerrungswerte (Ersetzen nach Kalibrierung)
+# Variablen für Kamerakalibrierung
+fx, fy, cx, cy = 299.6479, 307.0981, 161.4847, 126.4022
+k1, k2, p1, p2, k3 = -0.0657, 0.4584, 0, 0, 0
 
-# Kameramatrix und Verzerrungskoeffizienten mit Variablen
-camera_matrix = np.array([[fx, 0, cx],
-                          [0, fy, cy],
-                          [0, 0, 1]], dtype=np.float32)
-
+camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 dist_coeffs = np.array([k1, k2, p1, p2, k3], dtype=np.float32)
 
 
@@ -85,7 +99,6 @@ def main():
             for i in range(len(ids)):
                 rvecs, tvecs = estimate_pose(corners[i], marker_size, camera_matrix, dist_coeffs)
 
-                # Zeichnet die Achsen des Markers
                 if rvecs is not None and tvecs is not None:
                     if rvecs.size == 3 and tvecs.size == 3:
                         rvecs = rvecs.reshape((3, 1))
@@ -93,21 +106,19 @@ def main():
 
                         cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvecs, tvecs, marker_size)
                     else:
-                        print(" Warnung: Unerwartete Pose-Schätzung, Werte nicht wie erwartet!")
-                else:
-                    print(f" Warnung: Pose-Schätzung für Marker {ids[i][0]} fehlgeschlagen!")
+                        print("Warnung: Unerwartete Pose-Schätzung!")
 
-                # Berechnung der Polarkoordinaten (Höhe wird ignoriert)
+                # Berechnung der Polarkoordinaten
                 x, y = tvecs.flatten()[2], tvecs.flatten()[0]
-                r = np.sqrt(x ** 2 + y ** 2)  # Betrag des Vektors
-                theta = np.arctan2(y, x) * (180 / np.pi)  # Winkel in Grad
+                r = np.sqrt(x ** 2 + y ** 2)
+                theta = np.arctan2(y, x) * (180 / np.pi)
 
-                # Yaw-Winkel extrahieren (nur Z-Rotation)
-                yaw = rvecs.flatten()[2] * (180 / np.pi)  # Umrechnung von Rad in Grad
+                # Yaw-Winkel
+                yaw = rvecs.flatten()[2] * (180 / np.pi)
 
-                # print(f"Marker {ids[i][0]} - Abstand (Polarkoordinaten): r = {r:.3f} m, θ = {theta:.2f}°")
-                # print(f"Yaw-Winkel: {yaw:.2f}°")
-
+                # Senden der Werte über MQTT
+                payload = f"Marker {ids[i][0]} - r: {r:.3f} m, θ: {theta:.2f}°, Yaw: {yaw:.2f}°"
+                client.publish(MQTT_TOPIC_PUBLISH, payload)
 
         cv2.imshow('ESP32 ArUco Detection', frame)
 
@@ -116,6 +127,8 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
+    client.loop_stop()
+    client.disconnect()
 
 
 if __name__ == '__main__':
