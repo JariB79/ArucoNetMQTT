@@ -4,7 +4,6 @@ import numpy as np
 import requests
 
 
-
 # 3D-Koordinaten der Marker-Eckpunkte (bei flachem Marker auf der XY-Ebene)
 def get_marker_3d_points(marker_size):
     half_size = marker_size / 2
@@ -40,9 +39,9 @@ resolution_url = (f"http://{ip_address}/control?var=framesize&val=10")
 response = requests.get(resolution_url)
 
 if response.status_code == 200:
-    print("✅ Auflösung erfolgreich auf UXGA (1600x1200) gesetzt!")
+    print(" Auflösung erfolgreich auf UXGA (1600x1200) gesetzt!")
 else:
-    print("⚠ Fehler beim Setzen der Auflösung:", response.status_code)
+    print(" Fehler beim Setzen der Auflösung:", response.status_code)
 
 url = f'http://{ip_address}:81/stream?res=UXGA'
 
@@ -94,11 +93,9 @@ def main():
 
                         cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvecs, tvecs, marker_size)
                     else:
-                        print("⚠ Warnung: Unerwartete Pose-Schätzung, Werte nicht wie erwartet!")
+                        print(" Warnung: Unerwartete Pose-Schätzung, Werte nicht wie erwartet!")
                 else:
-                    print(f"⚠ Warnung: Pose-Schätzung für Marker {ids[i][0]} fehlgeschlagen!")
-
-                #print(f"Marker {ids[i][0]} - Abstand: {tvecs.flatten() if tvecs is not None else 'N/A'}, Orientierung: {rvecs.flatten() if rvecs is not None else 'N/A'}")
+                    print(f" Warnung: Pose-Schätzung für Marker {ids[i][0]} fehlgeschlagen!")
 
                 # Berechnung der Polarkoordinaten (Höhe wird ignoriert)
                 x, y = tvecs.flatten()[2], tvecs.flatten()[0]
@@ -108,9 +105,8 @@ def main():
                 # Yaw-Winkel extrahieren (nur Z-Rotation)
                 yaw = rvecs.flatten()[2] * (180 / np.pi)  # Umrechnung von Rad in Grad
 
-                print(f"Marker {ids[i][0]} - Abstand (Polarkoordinaten): r = {r:.3f} m, θ = {theta:.2f}°")
-                print(f"Yaw-Winkel: {yaw:.2f}°")
-
+                # print(f"Marker {ids[i][0]} - Abstand (Polarkoordinaten): r = {r:.3f} m, θ = {theta:.2f}°")
+                # print(f"Yaw-Winkel: {yaw:.2f}°")
 
 
         cv2.imshow('ESP32 ArUco Detection', frame)
