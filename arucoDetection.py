@@ -32,7 +32,7 @@ def estimate_pose(corners, marker_size, camera_matrix, dist_coeffs):
 MQTT_BROKER = "192.168.0.252"
 MQTT_PORT = 1883
 MQTT_TOPIC_PUBLISH = "aruco/detection"
-MQTT_TOPIC_SUBSCRIBE = "aruco/config"
+MQTT_TOPIC_SUBSCRIBE = "aruco/detection"
 
 # Callback-Funktion für empfangene MQTT-Nachrichten
 def on_message(client, userdata, msg):
@@ -52,18 +52,18 @@ marker_size = 0.025
 # ESP32-CAM IP-Adresse
 ip_address = "192.168.0.156"
 
-# URL für das Setzen der Auflösung auf UXGA (1600x1200)
+# URL für das Setzen der Auflösung auf  VGA (640x480)
 resolution_url = (f"http://{ip_address}/control?var=framesize&val=10")
 
 # Anfrage senden, um die Auflösung zu ändern
 response = requests.get(resolution_url)
 
 if response.status_code == 200:
-    print("Auflösung erfolgreich auf UXGA (1600x1200) gesetzt!")
+    print("Auflösung erfolgreich auf VGA (640x480) gesetzt!")
 else:
     print("Fehler beim Setzen der Auflösung:", response.status_code)
 
-url = f'http://{ip_address}:81/stream?res=UXGA'
+url = f'http://{ip_address}:81/stream'
 
 # Variablen für Kamerakalibrierung
 fx, fy, cx, cy = 299.6479, 307.0981, 161.4847, 126.4022
@@ -162,7 +162,7 @@ def main():
                 theta = np.arctan2(y, x) * (180 / np.pi)
 
                 # Yaw-Winkel
-                yaw = cube_data["Rotation"] * (180 / np.pi)
+                yaw = cube_data["Rotation"]
 
                 # Senden der Werte über MQTT
                 payload = {
