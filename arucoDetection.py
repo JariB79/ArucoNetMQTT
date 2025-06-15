@@ -3,6 +3,7 @@ import cv2.aruco as aruco
 import numpy as np
 import requests
 import paho.mqtt.client as mqtt
+import json
 
 
 # 3D-Koordinaten der Marker-Eckpunkte (bei flachem Marker auf der XY-Ebene)
@@ -30,7 +31,7 @@ def estimate_pose(corners, marker_size, camera_matrix, dist_coeffs):
 # MQTT Einstellungen
 MQTT_BROKER = "192.168.0.252"
 MQTT_PORT = 1883
-MQTT_TOPIC_PUBLISH = "$SYS/aruco/detection"
+MQTT_TOPIC_PUBLISH = "aruco/detection"
 MQTT_TOPIC_SUBSCRIBE = "aruco/config"
 
 # Callback-Funktion für empfangene MQTT-Nachrichten
@@ -71,6 +72,40 @@ k1, k2, p1, p2, k3 = -0.0657, 0.4584, 0, 0, 0
 camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 dist_coeffs = np.array([k1, k2, p1, p2, k3], dtype=np.float32)
 
+def convert_marker_to_cube(ids, tvecs, rvecs):
+    """
+    Konvertiert einen ArUco-Marker in einen Würfel mit korrektem Referenzpunkt.
+    """
+    cube_id = ids // 10  # Bestimmt den Würfel (Teamnummer)
+    face_id = ids % 10   # Bestimmt die Seite des Würfels
+
+    # Offset des Referenzpunkts (1.5 cm hinter dem Marker)
+    offset = np.array([0, 0, -0.015], dtype=np.float32)
+
+    # Berechne die neue Position des Würfels
+    cube_position = tvecs.flatten() + offset
+
+    # Position auf dem Würfel (Vorderseite, Rückseite, usw.)
+    face_positions = {
+        0: "Vorne",
+        1: "Rechts",
+        2: "Hinten",
+        3: "Links",
+        4: "Oben",
+        5: "Unten"
+    }
+
+    return {
+        "cube_id": int(cube_id),
+        "face": face_positions.get(face_id, "Unbekannt"),
+        "Position": {
+            "x": float(cube_position[0]),
+            "y": float(cube_position[1]),
+            "z": float(cube_position[2])
+        },
+        "Rotation": float(rvecs.flatten()[2] * (180 / np.pi))  # Yaw-Winkel in Grad
+    }
+
 
 def main():
     cap = cv2.VideoCapture(url)
@@ -94,12 +129,24 @@ def main():
         corners, ids, _ = detector.detectMarkers(frame)
 
         if ids is not None:
+            cubes = {}  # Dictionary zur Speicherung der Würfelpositionen
+
             aruco.drawDetectedMarkers(frame, corners, ids)
 
             for i in range(len(ids)):
                 rvecs, tvecs = estimate_pose(corners[i], marker_size, camera_matrix, dist_coeffs)
 
                 if rvecs is not None and tvecs is not None:
+                    cube_data = convert_marker_to_cube(int(ids[i][0]), tvecs, rvecs)
+
+                    # Daten nach Cube-ID gruppieren
+                    cube_id = cube_data["cube_id"]
+                    if cube_id not in cubes:
+                        cubes[cube_id] = {"id": cube_id, "faces": []}
+
+                    cubes[cube_id]["faces"].append(cube_data)
+
+                    '''
                     if rvecs.size == 3 and tvecs.size == 3:
                         rvecs = rvecs.reshape((3, 1))
                         tvecs = tvecs.reshape((3, 1))
@@ -107,18 +154,36 @@ def main():
                         cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvecs, tvecs, marker_size)
                     else:
                         print("Warnung: Unerwartete Pose-Schätzung!")
+                    '''
 
                 # Berechnung der Polarkoordinaten
-                x, y = tvecs.flatten()[2], tvecs.flatten()[0]
+                x, y = cube_data["Position"]["z"], cube_data["Position"]["x"]
                 r = np.sqrt(x ** 2 + y ** 2)
                 theta = np.arctan2(y, x) * (180 / np.pi)
 
                 # Yaw-Winkel
-                yaw = rvecs.flatten()[2] * (180 / np.pi)
+                yaw = cube_data["Rotation"] * (180 / np.pi)
 
                 # Senden der Werte über MQTT
-                payload = f"Marker {ids[i][0]} - r: {r:.3f} m, θ: {theta:.2f}°, Yaw: {yaw:.2f}°"
-                client.publish(MQTT_TOPIC_PUBLISH, payload)
+                payload = {
+                    "id": 4,
+                    "Others": [
+                        {
+                            "id": cube_data["cube_id"],
+                            "face": cube_data["face"],
+                            "Position": {
+                                "Distance": float(round(r, 3)),  # Abstand
+                                "Angle": float(round(theta, 2)),  # Richtung
+                                "Yaw": float(round(yaw, 2))  # Rotation
+                            }
+                        }
+                    ]
+                }
+
+                # Senden der Würfel-Daten über MQTT
+                for cube_id, data in cubes.items():
+                    mqtt_payload = json.dumps(payload)
+                    client.publish(MQTT_TOPIC_PUBLISH, mqtt_payload)
 
         cv2.imshow('ESP32 ArUco Detection', frame)
 
