@@ -26,8 +26,9 @@ else:
 url = f'http://{ip_address}:81/stream'
 
 # Variablen für Kamerakalibrierung
-fx, fy, cx, cy = 299.6479, 307.0981, 161.4847, 126.4022
-k1, k2, p1, p2, k3 = -0.0657, 0.4584, 0, 0, 0
+c, Lx, Ly = -1.358, 0.0022, 0.0022
+fx, fy, cx, cy = c/Lx, -c/Ly, 324.6594, 245.4463
+k1, k2, p1, p2, k3 = -0.0154, 0.1551, 0, 0, 0
 
 camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 dist_coeffs = np.array([k1, k2, p1, p2, k3], dtype=np.float32)
@@ -50,10 +51,14 @@ def get_marker_3d_points(MARKER_SIZE):
     ], dtype=np.float32)
 
 
-# Berechnung der Pose mit `solvePnP`
+# Berechnung der Pose mit solvePnP
 def estimate_pose(corners, MARKER_SIZE, camera_matrix, dist_coeffs):
     marker_3d_points = get_marker_3d_points(MARKER_SIZE)
+    # rvecs als Rotationsmatrix in Form [rx, ry, rz]
+    # tves als Translationsmatrix in Form [tx, ty, tz]
     success, rvecs, tvecs = cv2.solvePnP(marker_3d_points, corners[0], camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_IPPE)
+    print("rvecs: ", rvecs)
+    print("tvecs: ", tvecs)
 
     if success:
         return np.array(rvecs, dtype=np.float32), np.array(tvecs, dtype=np.float32)
@@ -81,7 +86,7 @@ def convert_marker_to_cube(ids, tvecs, rvecs):
     face_id = ids % 10   # Bestimmt die Seite des Würfels
 
     # Offset des Referenzpunkts (1.5 cm hinter dem Marker)
-    offset = np.array([0, 0, -0.015], dtype=np.float32)
+    offset = np.array([0, 0, 0.015], dtype=np.float32)
 
     # Berechne die neue Position des Würfels
     cube_position = tvecs.flatten() + offset
@@ -96,6 +101,20 @@ def convert_marker_to_cube(ids, tvecs, rvecs):
         5: "Unten"
     }
 
+    # Yaw-Korrektur basierend auf der erkannten Seite
+    face_yaw_correction = {
+        0: 0,  # Vorderseite → 0°
+        1: 90,  # Rechte Seite → 90°
+        2: 180,  # Rückseite → 180°
+        3: -90,  # Linke Seite → -90°
+    }
+
+    # Ursprüngliche Rotation des ArUco-Markers
+    raw_yaw = float(rvecs.flatten()[2] * (180 / np.pi))
+
+    # Endgültiger Yaw-Winkel des Würfels unter Berücksichtigung der Kameraansicht
+    adjusted_yaw = raw_yaw + face_yaw_correction.get(face_id, 0)
+
     return {
         "cube_id": int(cube_id),
         "face": face_positions.get(face_id, "Unbekannt"),
@@ -104,7 +123,7 @@ def convert_marker_to_cube(ids, tvecs, rvecs):
             "y": float(cube_position[1]),
             "z": float(cube_position[2])
         },
-        "Rotation": float(rvecs.flatten()[2] * (180 / np.pi))  # Yaw-Winkel in Grad
+        "Rotation": adjusted_yaw  # Korrigierter Yaw-Winkel
     }
 
 
@@ -167,6 +186,9 @@ def main():
                                 "Distance": float(round(r, 3)),  # Abstand
                                 "Angle": float(round(theta, 2)),  # Richtung
                                 "Yaw": float(round(yaw, 2))  # Rotation
+                                #"x": float(cube_data["Position"]["x"]),
+                                #"y": float(cube_data["Position"]["y"]),
+                                #"z": float(cube_data["Position"]["z"])
                             }
                         }
                     ]
