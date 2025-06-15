@@ -6,48 +6,8 @@ import paho.mqtt.client as mqtt
 import json
 
 
-# 3D-Koordinaten der Marker-Eckpunkte (bei flachem Marker auf der XY-Ebene)
-def get_marker_3d_points(marker_size):
-    half_size = marker_size / 2
-    return np.array([
-        [-half_size, half_size, 0],
-        [half_size, half_size, 0],
-        [half_size, -half_size, 0],
-        [-half_size, -half_size, 0]
-    ], dtype=np.float32)
-
-
-# Berechnung der Pose mit `solvePnP`
-def estimate_pose(corners, marker_size, camera_matrix, dist_coeffs):
-    marker_3d_points = get_marker_3d_points(marker_size)
-    success, rvecs, tvecs = cv2.solvePnP(marker_3d_points, corners[0], camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_IPPE)
-
-    if success:
-        return np.array(rvecs, dtype=np.float32), np.array(tvecs, dtype=np.float32)
-    else:
-        return None, None
-
-
-# MQTT Einstellungen
-MQTT_BROKER = "192.168.0.252"
-MQTT_PORT = 1883
-MQTT_TOPIC_PUBLISH = "aruco/detection"
-MQTT_TOPIC_SUBSCRIBE = "aruco/detection"
-
-# Callback-Funktion für empfangene MQTT-Nachrichten
-def on_message(client, userdata, msg):
-    print(f"Empfangene Nachricht: {msg.topic}: {msg.payload.decode()}")
-
-# Initialisiere MQTT-Client
-client = mqtt.Client()
-client.on_message = on_message
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
-client.subscribe(MQTT_TOPIC_SUBSCRIBE)
-client.loop_start()
-
-
 # Marker-Größe in Metern
-marker_size = 0.025
+MARKER_SIZE = 0.025
 
 # ESP32-CAM IP-Adresse
 ip_address = "192.168.0.156"
@@ -71,6 +31,47 @@ k1, k2, p1, p2, k3 = -0.0657, 0.4584, 0, 0, 0
 
 camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
 dist_coeffs = np.array([k1, k2, p1, p2, k3], dtype=np.float32)
+
+
+# MQTT Einstellungen
+MQTT_BROKER = "192.168.0.252"
+MQTT_PORT = 1883
+MQTT_TOPIC_PUBLISH = "aruco/detection"
+MQTT_TOPIC_SUBSCRIBE = "aruco/detection"
+
+# 3D-Koordinaten der Marker-Eckpunkte (bei flachem Marker auf der XY-Ebene)
+def get_marker_3d_points(MARKER_SIZE):
+    half_size = MARKER_SIZE / 2
+    return np.array([
+        [-half_size, half_size, 0],
+        [half_size, half_size, 0],
+        [half_size, -half_size, 0],
+        [-half_size, -half_size, 0]
+    ], dtype=np.float32)
+
+
+# Berechnung der Pose mit `solvePnP`
+def estimate_pose(corners, MARKER_SIZE, camera_matrix, dist_coeffs):
+    marker_3d_points = get_marker_3d_points(MARKER_SIZE)
+    success, rvecs, tvecs = cv2.solvePnP(marker_3d_points, corners[0], camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_IPPE)
+
+    if success:
+        return np.array(rvecs, dtype=np.float32), np.array(tvecs, dtype=np.float32)
+    else:
+        return None, None
+
+
+# Callback-Funktion für empfangene MQTT-Nachrichten
+def on_message(client, userdata, msg):
+    print(f"Empfangene Nachricht: {msg.topic}: {msg.payload.decode()}")
+
+# Initialisiere MQTT-Client
+client = mqtt.Client()
+client.on_message = on_message
+client.connect(MQTT_BROKER, MQTT_PORT, 60)
+client.subscribe(MQTT_TOPIC_SUBSCRIBE)
+client.loop_start()
+
 
 def convert_marker_to_cube(ids, tvecs, rvecs):
     """
@@ -134,7 +135,7 @@ def main():
             aruco.drawDetectedMarkers(frame, corners, ids)
 
             for i in range(len(ids)):
-                rvecs, tvecs = estimate_pose(corners[i], marker_size, camera_matrix, dist_coeffs)
+                rvecs, tvecs = estimate_pose(corners[i], MARKER_SIZE, camera_matrix, dist_coeffs)
 
                 if rvecs is not None and tvecs is not None:
                     cube_data = convert_marker_to_cube(int(ids[i][0]), tvecs, rvecs)
@@ -146,15 +147,6 @@ def main():
 
                     cubes[cube_id]["faces"].append(cube_data)
 
-                    '''
-                    if rvecs.size == 3 and tvecs.size == 3:
-                        rvecs = rvecs.reshape((3, 1))
-                        tvecs = tvecs.reshape((3, 1))
-
-                        cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvecs, tvecs, marker_size)
-                    else:
-                        print("Warnung: Unerwartete Pose-Schätzung!")
-                    '''
 
                 # Berechnung der Polarkoordinaten
                 x, y = cube_data["Position"]["z"], cube_data["Position"]["x"]
