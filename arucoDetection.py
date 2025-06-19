@@ -6,32 +6,37 @@ import paho.mqtt.client as mqtt
 import json
 import camera
 import aruco_utils
+import time
 
 
 ############################# MQTT ######################################
 # Callback function for received MQTT messages
+
 def on_message(client, userdata, msg):
     print(f"Received message: {msg.topic}: {msg.payload.decode()}")
-
+'''
 # MQTT settings
-MQTT_BROKER = "192.168.0.252"
+MQTT_BROKER = "192.168.2.112" # 192.168.0.252
 MQTT_PORT = 1883
-MQTT_TOPIC_PUBLISH = "aruco/detection"
+MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe/#4"
 MQTT_TOPIC_SUBSCRIBE = "aruco/detection"
+'''
+
+MQTT_BROKER = "test.mosquitto.org"
+MQTT_PORT = 1883
+MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe/4"
+MQTT_TOPIC_SUBSCRIBE = "EZS/beschtegruppe/5"
 
 # Initialise MQTT-Client
 client = mqtt.Client()
 client.on_message = on_message
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
 client.subscribe(MQTT_TOPIC_SUBSCRIBE)
-
-# Starts the background thread for processing incoming MQTT messages
-client.loop_start()
 #####################################################################
 
 
 ##################### ESP32-CAM Configuration #######################
-ip_address = "192.168.0.156"  # ESP32-CAM IP address
+ip_address = "192.168.2.113"  # ESP32-CAM IP address 192.168.0.156
 url = f'http://{ip_address}:81/stream'
 
 # URL for setting resolution to VGA (640x480)
@@ -49,7 +54,11 @@ MARKER_SIZE = 0.020  # marker size in meters
 camera_matrix = camera.get_camera_matrix()
 dist_coeffs = camera.get_dist_coeffs()
 
+
 def main():
+    # Starts the background thread for processing incoming MQTT messages
+    client.loop_start()
+
     cap = cv2.VideoCapture(url)
 
     if cap.isOpened():
@@ -58,67 +67,84 @@ def main():
         print("Error: Cannot open video stream")
         exit()
 
-    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
-    parameters = aruco.DetectorParameters()
-    detector = aruco.ArucoDetector(aruco_dict, parameters)
+
 
     while True:
         ret, frame = cap.read()
         if not ret:
             print("Failed to grab frame")
             break
+
+        aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+        parameters = aruco.DetectorParameters()
+        detector = aruco.ArucoDetector(aruco_dict, parameters)
+        corners, ids, _ = detector.detectMarkers(frame)
         # Detect ArUco markers in frame and extract their corners and IDs
         corners, ids, _ = detector.detectMarkers(frame)
 
         if ids is not None:
             cubes = {}  # Dictionary for storing the cube positions
 
+            # payload stores rotation and translation vectors of the detected markers
+            payload = {
+                "id": 1,
+                "Others": [],
+                "time": time.time()
+            }
             aruco.drawDetectedMarkers(frame, corners, ids)
 
-            for i in range(len(ids)):
-                rvecs, tvecs = aruco_utils.estimate_pose(corners[i], MARKER_SIZE, camera_matrix, dist_coeffs)
+
+            for marker_id, marker_corners in zip(ids.flatten(), corners):
+                # rvecs represents the rotation vector in the form [rx, ry, rz], given in radians
+                # tvecs represents the translation vector in the form [tx, ty, tz], given in meters
+                # rvecs, tvecs = aruco_utils.estimate_pose(marker_corners, MARKER_SIZE, camera_matrix, dist_coeffs)
+                ids, rvecs, tvecs = aruco_utils.get_aruco_markers(frame, camera_matrix, MARKER_SIZE, dist_coeffs)
+                # x-axis: red, y-axis: green, z-axis: blau
+                #cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvecs, tvecs, 0.02)
+
+
+                #cube_data = aruco_utils.convert_marker_to_cube(marker_id, tvecs, rvecs)
+                #print("-------------------------------------------")
+                #print("rvecs (deg): ", rvecs * (180/np.pi) )
+                #print("tvecs: ", tvecs)
+                #print("-------------------------------------------")
+                #print(cube_data)
+                #print(aruco_utils.estimate_camera_position_from_tvec(tvecs, marker_id, marker_global_position=(0.0, 0.0, 0.0)))
 
                 if rvecs is not None and tvecs is not None:
-                    cube_data = aruco_utils.convert_marker_to_cube(int(ids[i][0]), tvecs, rvecs)
+                    detected_marker = {
+                        "detected_id": int(marker_id),
+                        "Position": [
+                            {"rvecs": rvecs[0].tolist()},
+                            {"tvecs": tvecs[0].tolist()}
+                        ]
+                    }
+                    payload["Others"].append(detected_marker)
+
 
                     # Group data by cube ID
                     cube_id = cube_data["cube_id"]
                     if cube_id not in cubes:
-                        cubes[cube_id] = {"id": cube_id, "faces": []}
-
+                        cubes[cube_id] = {"id": cube_id, "faces": [], "polar_coords": []}
                     cubes[cube_id]["faces"].append(cube_data)
 
+                    # Calculate polar coordinates of the cube to display them in a coordinate system
+                    polar_data = aruco_utils.calc_polar_coordinates(cube_data)
+                    cubes[cube_id]["polar_coords"].append(polar_data)
+                
 
-                # Calculate  polar coordinates
-                x, y = cube_data["Position"]["z"], cube_data["Position"]["x"]
-                r = np.sqrt(x ** 2 + y ** 2)
-                theta = np.arctan2(y, x) * (180 / np.pi)
+            for cube_id, cube_data in cubes.items():
+                print(f"Würfel-ID: {cube_id}")
+                print(json.dumps(cube_data, indent=4))
 
-                # Yaw angle
-                yaw = cube_data["Rotation"]
 
-                payload = {
-                    "id": 4,
-                    "Others": [
-                        {
-                            "id": cube_data["cube_id"],
-                            "face": cube_data["face"],
-                            "Position": {
-                                "Distance": float(round(r, 3)),  # Abstand
-                                "Angle": float(round(theta, 2)),  # Richtung
-                                "Yaw": float(round(yaw, 2))  # Rotation
-                                #"x": float(cube_data["Position"]["x"]),
-                                #"y": float(cube_data["Position"]["y"]),
-                                #"z": float(cube_data["Position"]["z"])
-                            }
-                        }
-                    ]
-                }
+            # Send values via MQTT
+            try:
+                mqtt_payload = json.dumps(payload)
+                client.publish(MQTT_TOPIC_PUBLISH, mqtt_payload)
+            except Exception as e:
+                print(f"Failed to publish MQTT message: {e}")
 
-                # Send values via MQTT
-                for cube_id, data in cubes.items():
-                    mqtt_payload = json.dumps(payload)
-                    client.publish(MQTT_TOPIC_PUBLISH, mqtt_payload)
 
         cv2.imshow('ESP32 ArUco Detection', frame)
 
