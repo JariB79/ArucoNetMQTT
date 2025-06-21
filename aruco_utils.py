@@ -3,6 +3,12 @@ import cv2
 import cv2.aruco as aruco
 
 
+def ger_aruco_detector():
+    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+    parameters = aruco.DetectorParameters()
+    detector = aruco.ArucoDetector(aruco_dict, parameters)
+    return detector
+
 # 3D coordinates of the marker corner points (for flat marker on the XY plane)
 def get_marker_3d_points(MARKER_SIZE):
     """
@@ -22,27 +28,6 @@ def get_marker_3d_points(MARKER_SIZE):
         [half_size, -half_size, 0],
         [-half_size, -half_size, 0]
     ], dtype=np.float32)
-
-
-def get_aruco_markers(frame, camera_matrix, MARKER_SIZE, dist_coeffs):
-    """
-    Detects ArUco markers in the given frame.
-    Returns a list of detected markers with their IDs, distances, and angles.
-    """
-    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
-    parameters = aruco.DetectorParameters()
-    detector = aruco.ArucoDetector(aruco_dict, parameters)
-    corners, ids, _ = detector.detectMarkers(frame)
-
-    if ids is not None:
-        ids = ids.flatten()
-        rvecs, tvecs, _ = aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, camera_matrix,
-                                                          dist_coeffs)
-        rvecs = rvecs[0].tolist()
-        tvecs = tvecs[0].tolist()
-        return ids, rvecs, tvecs
-    else:
-        return [], [], []
 
 def estimate_pose(corners, MARKER_SIZE, camera_matrix, dist_coeffs):
     """
