@@ -3,7 +3,7 @@ import cv2
 import cv2.aruco as aruco
 
 
-def ger_aruco_detector():
+def get_aruco_detector():
     aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
     parameters = aruco.DetectorParameters()
     detector = aruco.ArucoDetector(aruco_dict, parameters)

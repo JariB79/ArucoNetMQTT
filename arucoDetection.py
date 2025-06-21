@@ -111,7 +111,7 @@ def main():
         print("Error: Cannot open video stream")
         exit()
 
-    detector = aruco_utils.ger_aruco_detector()
+    detector = aruco_utils.get_aruco_detector()
     while True:
         ret, frame = cap.read()
         if not ret:
