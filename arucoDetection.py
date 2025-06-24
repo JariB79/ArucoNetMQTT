@@ -9,18 +9,7 @@ import time
 from datetime import datetime
 
 
-############################# MQTT ######################################
-# Callback function for received MQTT messages
-'''
-def on_message(client, userdata, msg):
-    payload = json.loads(msg.payload.decode())
-    cam_id = payload["id"]
-    others = payload["Others"]
-
-    update_camera_data(cam_id, others)
-'''
-
-# MQTT settings
+############################# MQTT Settings ######################################
 MQTT_BROKER = "test.mosquitto.org" # Waltenhofen: 192.168.0.252 test.mosquitto.org
 MQTT_PORT = 1883
 MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe1/4"
@@ -43,7 +32,6 @@ MQTT_TOPIC_SUBSCRIBE = "EZS/beschtegruppe/#"
 
 # Initialise MQTT-Client
 client = mqtt.Client()
-#client.on_message = on_message
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
 client.subscribe(MQTT_TOPICS_SUBSCRIBE)
 #####################################################################
