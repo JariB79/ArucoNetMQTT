@@ -13,28 +13,12 @@ from datetime import datetime
 MQTT_BROKER = "test.mosquitto.org" # Waltenhofen: 192.168.0.252 test.mosquitto.org
 MQTT_PORT = 1883
 MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe1/4"
-MQTT_TOPICS_SUBSCRIBE = [
-    ("EZS/beschtegruppe/1", 0),
-    ("EZS/beschtegruppe/2", 0),
-    ("EZS/beschtegruppe/3", 0),
-    ("EZS/beschtegruppe/4", 0),
-    ("EZS/beschtegruppe/5", 0),
-    ("EZS/beschtegruppe/6", 0),
-    ("EZS/beschtegruppe/7", 0),
-]
 
-'''
-MQTT_BROKER = "test.mosquitto.org"
-MQTT_PORT = 1883
-MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe/4"
-MQTT_TOPIC_SUBSCRIBE = "EZS/beschtegruppe/#"
-'''
 
 # Initialise MQTT-Client
 client = mqtt.Client()
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
-client.subscribe(MQTT_TOPICS_SUBSCRIBE)
-#####################################################################
+##################################################################################
 
 
 ##################### ESP32-CAM Configuration #######################
@@ -58,8 +42,6 @@ dist_coeffs = camera.get_dist_coeffs()
 
 
 def main():
-    # Starts the background thread for processing incoming MQTT messages
-    client.loop_start()
 
     cap = cv2.VideoCapture(url)
 
@@ -71,7 +53,7 @@ def main():
 
     detector = aruco_utils.get_aruco_detector()
     last_send_time = 0
-    send_interval = 0.5  # 500 ms
+    send_interval = 1  # 1 s
 
     while True:
         ret, frame = cap.read()
@@ -87,7 +69,6 @@ def main():
 
             if current_time - last_send_time >= send_interval:
                 last_send_time = current_time
-                cubes = {}  # Dictionary for storing the cube positions
                 # payload stores rotation and translation vectors of the detected markers
                 payload = {
                     "id": 4,
