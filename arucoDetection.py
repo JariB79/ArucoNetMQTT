@@ -12,12 +12,17 @@ from datetime import datetime
 ############################# MQTT Settings ######################################
 MQTT_BROKER = "test.mosquitto.org" # Waltenhofen: 192.168.0.252 test.mosquitto.org
 MQTT_PORT = 1883
-MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe1/4"
+MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe/4"
 
 
 # Initialise MQTT-Client
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
+
+def on_connect(client, userdata, flags, rc, properties=None):
+    if rc == 0:
+        print(f"Erfolgreich mit MQTT Broker verbunden. Abonniere Topic: {MQTT_TOPIC_PUBLISH}")
+        client.subscribe(MQTT_TOPIC_PUBLISH)
 ##################################################################################
 
 
@@ -53,7 +58,7 @@ def main():
 
     detector = aruco_utils.get_aruco_detector()
     last_send_time = 0
-    send_interval = 1  # 1 s
+    send_interval = 0.5  # 500 ms
 
     while True:
         ret, frame = cap.read()
@@ -73,7 +78,7 @@ def main():
                 payload = {
                     "id": 4,
                     "Others": [],
-                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "time": str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                 }
 
                 for marker_id, marker_corners in zip(ids.flatten(), corners):
