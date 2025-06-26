@@ -10,7 +10,7 @@ from datetime import datetime
 
 
 ############################# MQTT Settings ######################################
-MQTT_BROKER = "test.mosquitto.org" # Waltenhofen: 192.168.0.252 test.mosquitto.org
+MQTT_BROKER = "192.168.3.113" # Waltenhofen: 192.168.0.252 test.mosquitto.org
 MQTT_PORT = 1883
 MQTT_TOPIC_PUBLISH = "EZS/beschtegruppe/4"
 
@@ -27,7 +27,7 @@ def on_connect(client, userdata, flags, rc, properties=None):
 
 
 ##################### ESP32-CAM Configuration #######################
-ip_address = "192.168.0.156"  # ESP32-CAM IP address 192.168.0.156
+ip_address = "192.168.3.118"  # ESP32-CAM IP address 192.168.0.156
 url = f'http://{ip_address}:81/stream'
 
 # URL for setting resolution to VGA (640x480)

@@ -12,9 +12,9 @@ from NodeVisualizer import NodeVisualizer
 
 
 # MQTT Broker Setup
-MQTT_BROKER = "test.mosquitto.org"
+MQTT_BROKER = "192.168.3.113"
 MQTT_PORT = 1883
-MQTT_TOPIC = "EZS/beschtegruppe/4"
+MQTT_TOPIC_SUBSCRIBED = "EZS/beschtegruppe/#"
 
 
 class NodeManager:
@@ -29,18 +29,18 @@ class NodeManager:
         # Format: (sender, detected) -> {'transform': matrix, 'timestamp': int}
         self.relative_transforms = {}
         self.lock = threading.Lock()  # Lock für Thread-sicheren Zugriff
-        self.side_transforms = self._create_side_transforms()
+        self.side_transforms = self._map_sides_to_front_transforms()
 
-    def _create_side_transforms(self):
+    def _map_sides_to_front_transforms (self):
         """
         Erstellt die 4x4-Transformationsmatrizen, um erkannte Seiten auf die Vorderseite zu mappen.
         Seite: 0 = vorne, 1 = rechts, 2 = hinten, 3 = links, 4 = oben, 5 = unten
         """
         transforms = {}
         euler_angles = {
-            0: ('y', 180),
+            0: ('y', 0),
             1: ('y', 90),
-            2: ('y', 0),
+            2: ('y', 180),
             3: ('y', -90),
             4: ('x', 90),
             5: ('x', -90)
@@ -92,6 +92,7 @@ class NodeManager:
                 sender_id = data['id']
                 raw_time = data.get("time")
                 pt = datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
+
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
                 print(f" Ungültiger Payload oder Zeitangabe: {e} | Daten: {payload}")
                 return
@@ -115,8 +116,8 @@ class NodeManager:
                         print(f"Warnung: Ungültige Seiten-ID {side_id} für {detected_id} erkannt. Ignoriere.")
                         continue
 
-                    self._init_node_if_needed (sender_id)
-                    self._init_node_if_needed (detected_cam)
+                    self._init_node_if_needed(sender_id)
+                    self._init_node_if_needed(detected_cam)
 
                     # Zeitstempel für beide beteiligten Knoten aktualisieren
                     self.nodes[sender_id]['last_seen'] = current_time
@@ -153,8 +154,6 @@ class NodeManager:
                     measured_transform[:3, 3] = tvecs.flatten()
 
                     side_correction_transform = self.side_transforms[side_id]
-
-
                     normalized_transform = measured_transform @ side_correction_transform
 
                     new_data = {'transform': normalized_transform, 'timestamp': message_timestamp}
@@ -163,12 +162,12 @@ class NodeManager:
                     self.relative_transforms[(sender_id, detected_cam)] = new_data
                     self.relative_transforms[(detected_cam, sender_id)] = inv_new_data
 
-                    self.update_all_positions()
+                    self.calc_global_positions()
 
         except (json.JSONDecodeError, KeyError, np.linalg.LinAlgError) as e:
             print(f"Fehler beim Verarbeiten der Nachricht oder bei der Berechnung: {e}")
 
-    def remove_old_nodes(self, timeout=10):
+    def remove_old_nodes(self, timeout=20):
         """
         Entfernt Knoten und deren Relationen, die länger als 'timeout' Sekunden
         nicht gesehen wurden. Der Ankerknoten wird nie entfernt.
@@ -200,12 +199,16 @@ class NodeManager:
                 if relation in self.relative_transforms:
                     del self.relative_transforms[relation]
 
-            self.update_all_positions()
+            self.calc_global_positions()
 
-    def update_all_positions(self):
+    def calc_global_positions(self):
         """
-        Berechnet die globalen Positionen aller Knoten neu, ausgehend vom Anker.
-        Diese Methode ist für den internen Gebrauch und sollte innerhalb eines Locks aufgerufen werden.
+        Berechnet die globalen Positionen aller bekannten Kameraknoten relativ zum Ankerknoten.
+
+        Die Methode propagiert bekannte relative Transformationen rekursiv durch das Netzwerk,
+        beginnend beim Ankerknoten. Dabei wird jeder erreichbare Knoten mit einer globalen
+        4x4-Transformationsmatrix versehen, die seine Position und Orientierung im globalen
+        Koordinatensystem beschreibt. Nicht erreichbare Knoten bleiben unverankert.
         """
 
         if self.anchor_cube_id not in self.nodes: return
@@ -227,7 +230,7 @@ class NodeManager:
 
                     if not self.nodes.get(end_node, {}).get('is_anchored') or not np.allclose(
                             self.nodes[end_node]['global_transform'], T_new_global_end):
-                        self._init_node_if_needed (end_node)
+                        self._init_node_if_needed(end_node)
                         self.nodes[end_node]['global_transform'] = T_new_global_end
                         self.nodes[end_node]['is_anchored'] = True
                         updated_in_pass = True
@@ -240,8 +243,8 @@ class NodeManager:
 
 def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
-        print(f"Verbindung mit MQTT Broker erfolgreich. Abonniere Topic: {MQTT_TOPIC}")
-        client.subscribe(MQTT_TOPIC)
+        print(f"Verbindung mit MQTT Broker erfolgreich. Abonniere Topic: {MQTT_TOPIC_SUBSCRIBED}")
+        client.subscribe(MQTT_TOPIC_SUBSCRIBED)
     else:
         print(f"Verbindung mit MQTT Broker fehlgeschlagen: {rc}")
 

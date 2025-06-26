@@ -35,7 +35,7 @@ class NodeVisualizer:
 
     def _update_frame(self, frame):
         # Vor dem Zeichnen veraltete Knoten entfernen
-        self.node_manager.remove_old_nodes(timeout=10)
+        self.node_manager.remove_old_nodes(timeout=20)
 
         self.ax.clear()
 
